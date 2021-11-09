@@ -730,6 +730,8 @@ public class RawLocalFileSystem extends FileSystem {
      * call is not successful
      */
     private synchronized void loadPermissionInfo() {
+      // disable NativeIO to avoid graphene issue
+      /*
       if (!isPermissionLoaded() && NativeIO.isAvailable()) {
         try {
           loadPermissionInfoByNativeIO();
@@ -737,6 +739,7 @@ public class RawLocalFileSystem extends FileSystem {
           LOG.debug("Native call failed", ex);
         }
       }
+      */
 
       if (!isPermissionLoaded()) {
         loadPermissionInfoByNonNativeIO();
