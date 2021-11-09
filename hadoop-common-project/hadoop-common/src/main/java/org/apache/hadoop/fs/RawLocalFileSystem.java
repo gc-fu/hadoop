@@ -731,6 +731,8 @@ public class RawLocalFileSystem extends FileSystem {
      */
     private synchronized void loadPermissionInfo() {
       // disable NativeIO to avoid graphene issue
+      System.out.println("WARN RawLocalFileSystem.loadPermissionInfo disabled loadPermissionInfoByNativeIO, " +
+              "enabled loadPermissionInfoByNonNativeIO!!!");
       /*
       if (!isPermissionLoaded() && NativeIO.isAvailable()) {
         try {
