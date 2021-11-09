@@ -783,7 +783,7 @@ public abstract class Shell {
   /**
    * Flag which is true if setsid exists.
    */
-  public static final boolean isSetsidAvailable = isSetsidSupported();
+  public static final boolean isSetsidAvailable = false; //isSetsidSupported();
 
   /**
    * Look for <code>setsid</code>.
