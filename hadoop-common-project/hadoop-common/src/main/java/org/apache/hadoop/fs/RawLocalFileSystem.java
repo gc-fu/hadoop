@@ -862,10 +862,9 @@ public class RawLocalFileSystem extends FileSystem {
   @Override
   public void setPermission(Path p, FsPermission permission)
     throws IOException {
-    String perm = String.format("%04o", permission.toShort());
-    Shell.execCommand(Shell.getSetPermissionCommand(perm, false,
-            FileUtil.makeShellPath(pathToFile(p), true)));
-    /* disable NativeIO to avoid issues in Graphene
+    System.out.println("WARN: HADOOP.RawLocalFileSystem disabled NativeIO and " +
+            "ProcessBuilder chmod to avoid issues in Graphene");
+    /* disable NativeIO and ProcessBuilder chmod to avoid issues in Graphene
     if (NativeIO.isAvailable()) {
       NativeIO.POSIX.chmod(pathToFile(p).getCanonicalPath(),
                      permission.toShort());
