@@ -731,8 +731,8 @@ public class RawLocalFileSystem extends FileSystem {
      */
     private synchronized void loadPermissionInfo() {
       // disable NativeIO to avoid graphene issue
-      System.out.println("WARN RawLocalFileSystem.loadPermissionInfo disabled loadPermissionInfoByNativeIO, " +
-              "enabled loadPermissionInfoByNonNativeIO!!!");
+      System.out.println("WARN RawLocalFileSystem.loadPermissionInfo disabled loadPermissionInfoByNativeIO and " +
+              "loadPermissionInfoByNonNativeIO!!!");
       /*
       if (!isPermissionLoaded() && NativeIO.isAvailable()) {
         try {
@@ -741,11 +741,12 @@ public class RawLocalFileSystem extends FileSystem {
           LOG.debug("Native call failed", ex);
         }
       }
-      */
+
 
       if (!isPermissionLoaded()) {
         loadPermissionInfoByNonNativeIO();
       }
+      */
     }
 
     /// loads permissions, owner, and group from `ls -ld`
