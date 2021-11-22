@@ -528,7 +528,10 @@ public class RawLocalFileSystem extends FileSystem {
     if (permission == null) {
       permission = FsPermission.getDirDefault();
     }
-    permission = permission.applyUMask(FsPermission.getUMask(getConf()));
+    // permission = permission.applyUMask(FsPermission.getUMask(getConf()));
+    System.out.println("WARN disable permission umask not to " +
+            permission.applyUMask(FsPermission.getUMask(getConf())));
+    System.out.println("WARN permission is still:" + permission);
     if (Shell.WINDOWS && NativeIO.isAvailable()) {
       try {
         NativeIO.Windows.createDirectoryWithMode(p2f, permission.toShort());
