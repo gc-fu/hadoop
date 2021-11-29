@@ -205,7 +205,7 @@ public class FileUtil {
     }
 
     try {
-      LOG.warn("readSymbolicLink------------------");
+      // use java's readSymbolicLink instead of shell
       return Files.readSymbolicLink(f.toPath()).toFile().toString();
       // return Shell.execCommand(
       //    Shell.getReadlinkCommand(f.toString())).trim();
