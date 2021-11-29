@@ -205,8 +205,10 @@ public class FileUtil {
     }
 
     try {
-      return Shell.execCommand(
-          Shell.getReadlinkCommand(f.toString())).trim();
+      LOG.warn("readSymbolicLink------------------");
+      return Files.readSymbolicLink(f.toPath()).toFile().toString();
+      // return Shell.execCommand(
+      //    Shell.getReadlinkCommand(f.toString())).trim();
     } catch (IOException x) {
       return "";
     }
