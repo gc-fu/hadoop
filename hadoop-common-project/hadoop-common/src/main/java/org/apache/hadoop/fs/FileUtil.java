@@ -36,6 +36,7 @@ import java.nio.charset.Charset;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.List;
@@ -984,6 +985,13 @@ public class FileUtil {
       return;
     }
 
+    if (!outputFile.getParentFile().exists()) {
+      if (!outputFile.getParentFile().mkdirs()) {
+        throw new IOException("Mkdirs failed to create tar internal dir "
+            + outputDir);
+      }
+    }
+
     if (entry.isSymbolicLink()) {
       // Create symbolic link relative to tar parent dir
       Files.createSymbolicLink(FileSystems.getDefault()
@@ -992,12 +1000,6 @@ public class FileUtil {
       return;
     }
 
-    if (!outputFile.getParentFile().exists()) {
-      if (!outputFile.getParentFile().mkdirs()) {
-        throw new IOException("Mkdirs failed to create tar internal dir "
-            + outputDir);
-      }
-    }
 
     if (entry.isLink()) {
       File src = new File(outputDir, entry.getLinkName());
