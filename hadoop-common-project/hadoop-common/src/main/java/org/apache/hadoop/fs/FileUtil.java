@@ -856,16 +856,17 @@ public class FileUtil {
     }
 
     boolean gzipped = inFile.toString().endsWith("gz");
-    if(Shell.WINDOWS) {
-      // Tar is not native to Windows. Use simple Java based implementation for
-      // tests and simple tar archives
-      unTarUsingJava(inFile, untarDir, gzipped);
-    }
-    else {
-      // spawn tar utility to untar archive for full fledged unix behavior such
-      // as resolving symlinks in tar archives
-      unTarUsingTar(inFile, untarDir, gzipped);
-    }
+    unTarUsingJava(inFile, untarDir, gzipped);
+    // if(Shell.WINDOWS) {
+    //   // Tar is not native to Windows. Use simple Java based implementation for
+    //   // tests and simple tar archives
+    //   unTarUsingJava(inFile, untarDir, gzipped);
+    // }
+    // else {
+    //   // spawn tar utility to untar archive for full fledged unix behavior such
+    //   // as resolving symlinks in tar archives
+    //   unTarUsingTar(inFile, untarDir, gzipped);
+    // }
   }
 
   private static void unTarUsingTar(InputStream inputStream, File untarDir,
