@@ -962,6 +962,17 @@ public class FileUtil {
     }
   }
 
+  private static String getCanonicalPath(String path, File parentDir) throws IOException {
+    java.nio.file.Path targetPath = Paths.get(path);
+    return (targetPath.isAbsolute() ? new File(path) : new File(parentDir, path)).getCanonicalPath();
+  }
+
+  private static String getAbsoluteSymbolicPath(TarArchiveEntry entry, File outputDir) throws IOException {
+    String filePath = getCanonicalPath(entry.getName(), outputDir);
+    java.nio.file.Path path = Paths.get(filePath).getParent();
+    String finalPath = getCanonicalPath(entry.getLinkName(), path.toFile());
+    return finalPath;
+  }
   private static void unpackEntries(TarArchiveInputStream tis,
       TarArchiveEntry entry, File outputDir) throws IOException {
     String targetDirPath = outputDir.getCanonicalPath() + File.separator;
@@ -994,9 +1005,10 @@ public class FileUtil {
 
     if (entry.isSymbolicLink()) {
       // Create symbolic link relative to tar parent dir
+      String canonicalTargetPath = getAbsoluteSymbolicPath(entry, outputDir);
       Files.createSymbolicLink(FileSystems.getDefault()
               .getPath(outputDir.getPath(), entry.getName()),
-          FileSystems.getDefault().getPath(entry.getLinkName()));
+          FileSystems.getDefault().getPath(canonicalTargetPath));
       return;
     }
 
