@@ -68,7 +68,7 @@ import org.apache.hadoop.util.Shell.ShellCommandExecutor;
 import org.apache.hadoop.util.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
+import org.apache.commons.io.FileUtils;
 /**
  * A collection of file-processing util methods
  */
@@ -930,10 +930,13 @@ public class FileUtil {
 
       tis = new TarArchiveInputStream(inputStream);
 
+      List<TarArchiveEntry> linkEntries = new ArrayList<>();
+      List<File> outputDirs = new ArrayList<>();
       for (TarArchiveEntry entry = tis.getNextTarEntry(); entry != null;) {
-        unpackEntries(tis, entry, untarDir);
+        unpackEntries(tis, entry, untarDir, linkEntries, outputDirs);
         entry = tis.getNextTarEntry();
       }
+      copyLinkEntries(linkEntries, outputDirs);
     } finally {
       IOUtils.cleanupWithLogger(LOG, tis, inputStream);
     }
@@ -953,6 +956,7 @@ public class FileUtil {
 
       tis = new TarArchiveInputStream(inputStream);
 
+
       for (TarArchiveEntry entry = tis.getNextTarEntry(); entry != null;) {
         unpackEntries(tis, entry, untarDir);
         entry = tis.getNextTarEntry();
@@ -961,7 +965,125 @@ public class FileUtil {
       IOUtils.cleanupWithLogger(LOG, tis, inputStream);
     }
   }
+  private static void unpackEntries(TarArchiveInputStream tis,
+      TarArchiveEntry entry, File outputDir, List<TarArchiveEntry> linkEntries, List<File> outputDirs) throws IOException {
+    String targetDirPath = outputDir.getCanonicalPath() + File.separator;
+    File outputFile = new File(outputDir, entry.getName());
+    if (!outputFile.getCanonicalPath().startsWith(targetDirPath)) {
+      throw new IOException("expanding " + entry.getName()
+          + " would create entry outside of " + outputDir);
+    }
 
+    if (entry.isDirectory()) {
+      File subDir = new File(outputDir, entry.getName());
+      if (!subDir.mkdirs() && !subDir.isDirectory()) {
+        throw new IOException("Mkdirs failed to create tar internal dir "
+            + outputDir);
+      }
+
+      for (TarArchiveEntry e : entry.getDirectoryEntries()) {
+        unpackEntries(tis, e, subDir, linkEntries, outputDirs);
+      }
+
+      return;
+    }
+
+    if (!outputFile.getParentFile().exists()) {
+      if (!outputFile.getParentFile().mkdirs()) {
+        throw new IOException("Mkdirs failed to create tar internal dir "
+            + outputDir);
+      }
+    }
+
+    if (entry.isSymbolicLink()) {
+      linkEntries.add(entry);
+      outputDirs.add(outputDir);
+      return;
+    }
+
+
+    if (entry.isLink()) {
+      linkEntries.add(entry);
+      outputDirs.add(outputDir);
+      return;
+    }
+
+    int count;
+    byte data[] = new byte[2048];
+    try (BufferedOutputStream outputStream = new BufferedOutputStream(
+        new FileOutputStream(outputFile));) {
+
+      while ((count = tis.read(data)) != -1) {
+        outputStream.write(data, 0, count);
+      }
+
+      outputStream.flush();
+    }
+  }
+
+
+  // We will still get exceptions because of the subdir
+  static void copyLinkEntries(List<TarArchiveEntry> linkEntries, List<File> outputDirs) throws IOException{
+    List<TarArchiveEntry> direntry = new ArrayList<>();
+    List<File> diroutdir = new ArrayList<>();
+    for (int i = 0; i < linkEntries.size(); i++) {
+        TarArchiveEntry entry = linkEntries.get(i);
+        File outputDir = outputDirs.get(i);
+        File outputFile = new File(outputDir, entry.getName());
+        String sourcePath;
+        if (entry.isSymbolicLink()) {
+          sourcePath = getCanonicalPath(entry.getLinkName(), outputFile.getParentFile());
+        } else if (entry.isLink()) {
+          sourcePath = getCanonicalPath(entry.getLinkName(), outputDir);
+        } else {
+          throw new IOException("Unexpected entry link type");
+        }
+        File src = new File(sourcePath);
+        if (src.isDirectory()) {
+          // We handle directory at last
+          direntry.add(entry);
+          diroutdir.add(outputDirs.get(i));
+        } else {
+          System.out.println("Try to copy file src:" + src.getAbsolutePath() +" dest: " + outputFile.getAbsolutePath());
+          FileUtils.copyFile(src, outputFile);
+        }
+    }
+    for (int i = 0;i < direntry.size(); i ++) {
+        TarArchiveEntry entry = direntry.get(i);
+        File outputFile = new File(outputDirs.get(i), direntry.get(i).getName());
+        String sourcePath;
+        if (entry.isSymbolicLink()) {
+          sourcePath = getCanonicalPath(direntry.get(i).getLinkName(), outputFile.getParentFile());
+        } else if (entry.isLink()) {
+          sourcePath = getCanonicalPath(entry.getLinkName(), outputDirs.get(i));
+        } else {
+          throw new IOException("Unexpected entry link type");
+        }
+        File src = new File(sourcePath);
+        // Is it because of the order?
+        // We first copy the Directory, and then copy the files
+        if (src.isDirectory()) {
+          // How does it handle the symlinks?
+          // System.out.println("Try to copy directory src:" + src.getAbsolutePath() +" dest: " + outputFile.getAbsolutePath());
+          FileUtils.copyDirectory(src, outputFile);
+        } else {
+          // Two files are not going to the correct path
+          throw new IOException("Unexpected file type");
+        }
+    }
+  }
+
+  /**
+   * Gets the canonical path for the given path.
+   *
+   * @param path      The path for which the canonical path needs to be computed.
+   * @param parentDir The parent directory to use if the path is a relative path.
+   * @return The canonical path of the given path.
+   */
+  private static String getCanonicalPath(String path, File parentDir) throws IOException {
+    java.nio.file.Path targetPath = Paths.get(path);
+    return (targetPath.isAbsolute() ? new File(path) : new File(parentDir, path)).getCanonicalPath();
+  }
   private static void unpackEntries(TarArchiveInputStream tis,
       TarArchiveEntry entry, File outputDir) throws IOException {
     String targetDirPath = outputDir.getCanonicalPath() + File.separator;
