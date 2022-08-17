@@ -1038,7 +1038,6 @@ public class FileUtil {
   }
 
 
-  // We will still get exceptions because of the subdir
   static void copyLinkEntries(List<TarArchiveEntry> linkEntries, List<File> outputDirs) throws IOException{
     List<TarArchiveEntry> direntry = new ArrayList<>();
     List<File> diroutdir = new ArrayList<>();
