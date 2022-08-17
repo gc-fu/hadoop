@@ -858,16 +858,6 @@ public class FileUtil {
 
     boolean gzipped = inFile.toString().endsWith("gz");
     unTarUsingJava(inFile, untarDir, gzipped);
-    // if(Shell.WINDOWS) {
-    //   // Tar is not native to Windows. Use simple Java based implementation for
-    //   // tests and simple tar archives
-    //   unTarUsingJava(inFile, untarDir, gzipped);
-    // }
-    // else {
-    //   // spawn tar utility to untar archive for full fledged unix behavior such
-    //   // as resolving symlinks in tar archives
-    //   unTarUsingTar(inFile, untarDir, gzipped);
-    // }
   }
 
   private static void unTarUsingTar(InputStream inputStream, File untarDir,
@@ -965,6 +955,33 @@ public class FileUtil {
       IOUtils.cleanupWithLogger(LOG, tis, inputStream);
     }
   }
+
+  /**
+   * Gets the canonical path for the link file
+   *
+   * @param entry      The entry which records the tar entry's link source file,
+   *                   and target destination file.
+   * @param outputFile The target output file, used for computing the absolute
+   *                   path.
+   *                   This information is needed because the entry's link name is
+   *                   a relative path that is relative to the outputFile's path.
+   * @param outputDir  The relative path given by hardlink entry is relative to
+   *                   the output directory.
+   * @return The canonical path of the given link source file.
+   */
+  private static String getCanonicalLinkPath(TarArchiveEntry entry, File outputFile, File outputDir)
+      throws IOException {
+    String sourcePath;
+    if (entry.isSymbolicLink()) {
+      sourcePath = getCanonicalPath(entry.getLinkName(), outputFile.getParentFile());
+    } else if (entry.isLink()) {
+      sourcePath = getCanonicalPath(entry.getLinkName(), outputDir);
+    } else {
+      throw new IOException("Unexpected link entry flag");
+    }
+    return sourcePath;
+  }
+
   private static void unpackEntries(TarArchiveInputStream tis,
       TarArchiveEntry entry, File outputDir, List<TarArchiveEntry> linkEntries, List<File> outputDirs) throws IOException {
     String targetDirPath = outputDir.getCanonicalPath() + File.separator;
@@ -972,6 +989,17 @@ public class FileUtil {
     if (!outputFile.getCanonicalPath().startsWith(targetDirPath)) {
       throw new IOException("expanding " + entry.getName()
           + " would create entry outside of " + outputDir);
+    }
+
+    if (entry.isSymbolicLink() || entry.isLink()) {
+      String canonicalTargetPath = getCanonicalLinkPath(entry, outputFile, outputDir);
+      if (!canonicalTargetPath.startsWith(targetDirPath)) {
+        throw new IOException(
+            "expanding " + entry.getName() + " would create entry outside of " + outputDir);
+      }
+      linkEntries.add(entry);
+      outputDirs.add(outputDir);
+      return;
     }
 
     if (entry.isDirectory()) {
@@ -995,18 +1023,6 @@ public class FileUtil {
       }
     }
 
-    if (entry.isSymbolicLink()) {
-      linkEntries.add(entry);
-      outputDirs.add(outputDir);
-      return;
-    }
-
-
-    if (entry.isLink()) {
-      linkEntries.add(entry);
-      outputDirs.add(outputDir);
-      return;
-    }
 
     int count;
     byte data[] = new byte[2048];
@@ -1030,44 +1046,24 @@ public class FileUtil {
         TarArchiveEntry entry = linkEntries.get(i);
         File outputDir = outputDirs.get(i);
         File outputFile = new File(outputDir, entry.getName());
-        String sourcePath;
-        if (entry.isSymbolicLink()) {
-          sourcePath = getCanonicalPath(entry.getLinkName(), outputFile.getParentFile());
-        } else if (entry.isLink()) {
-          sourcePath = getCanonicalPath(entry.getLinkName(), outputDir);
-        } else {
-          throw new IOException("Unexpected entry link type");
-        }
+        String sourcePath = getCanonicalLinkPath(entry, outputFile, outputDir);
         File src = new File(sourcePath);
         if (src.isDirectory()) {
-          // We handle directory at last
           direntry.add(entry);
           diroutdir.add(outputDirs.get(i));
         } else {
-          System.out.println("Try to copy file src:" + src.getAbsolutePath() +" dest: " + outputFile.getAbsolutePath());
           FileUtils.copyFile(src, outputFile);
         }
     }
     for (int i = 0;i < direntry.size(); i ++) {
         TarArchiveEntry entry = direntry.get(i);
-        File outputFile = new File(outputDirs.get(i), direntry.get(i).getName());
-        String sourcePath;
-        if (entry.isSymbolicLink()) {
-          sourcePath = getCanonicalPath(direntry.get(i).getLinkName(), outputFile.getParentFile());
-        } else if (entry.isLink()) {
-          sourcePath = getCanonicalPath(entry.getLinkName(), outputDirs.get(i));
-        } else {
-          throw new IOException("Unexpected entry link type");
-        }
+        File outputDir = diroutdir.get(i);
+        File outputFile = new File(outputDir, entry.getName());
+        String sourcePath = getCanonicalLinkPath(entry, outputFile, outputDir);
         File src = new File(sourcePath);
-        // Is it because of the order?
-        // We first copy the Directory, and then copy the files
         if (src.isDirectory()) {
-          // How does it handle the symlinks?
-          // System.out.println("Try to copy directory src:" + src.getAbsolutePath() +" dest: " + outputFile.getAbsolutePath());
           FileUtils.copyDirectory(src, outputFile);
         } else {
-          // Two files are not going to the correct path
           throw new IOException("Unexpected file type");
         }
     }
