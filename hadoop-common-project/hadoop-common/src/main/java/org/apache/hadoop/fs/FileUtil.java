@@ -39,6 +39,7 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Enumeration;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
@@ -857,7 +858,21 @@ public class FileUtil {
     }
 
     boolean gzipped = inFile.toString().endsWith("gz");
-    unTarUsingJava(inFile, untarDir, gzipped);
+    if (Shell.WINDOWS) {
+      // Tar is not native to Windows. Use simple Java based implementation for
+      // tests and simple tar archives
+      unTarUsingJava(inFile, untarDir, gzipped);
+    } else {
+      // spawn tar utility to untar archive for full fledged unix behavior such
+      // as resolving symlinks in tar archives
+      // unTarUsingTar(inFile, untarDir, gzipped);
+
+      // symlink syscall is not implemented in LibOs
+      // to bypss this defect, use simple java based implementation to copy the symlink/hardlink
+      // source file to the destination path
+      // not support symbolic link to a symbolic link file
+      unTarUsingJava(inFile, untarDir, gzipped);
+    }
   }
 
   private static void unTarUsingTar(InputStream inputStream, File untarDir,
@@ -920,13 +935,12 @@ public class FileUtil {
 
       tis = new TarArchiveInputStream(inputStream);
 
-      List<TarArchiveEntry> linkEntries = new ArrayList<>();
-      List<File> outputDirs = new ArrayList<>();
+      Map<TarArchiveEntry, File> entryMap = new HashMap<>();
       for (TarArchiveEntry entry = tis.getNextTarEntry(); entry != null;) {
-        unpackEntries(tis, entry, untarDir, linkEntries, outputDirs);
+        unpackEntries(tis, entry, untarDir, entryMap);
         entry = tis.getNextTarEntry();
       }
-      copyLinkEntries(linkEntries, outputDirs);
+      copyLinkEntries(entryMap);
     } finally {
       IOUtils.cleanupWithLogger(LOG, tis, inputStream);
     }
@@ -977,13 +991,13 @@ public class FileUtil {
     } else if (entry.isLink()) {
       sourcePath = getCanonicalPath(entry.getLinkName(), outputDir);
     } else {
-      throw new IOException("Unexpected link entry flag");
+      throw new IOException("Unexpected link entry flag, not a symbolic/hard link");
     }
     return sourcePath;
   }
 
   private static void unpackEntries(TarArchiveInputStream tis,
-      TarArchiveEntry entry, File outputDir, List<TarArchiveEntry> linkEntries, List<File> outputDirs) throws IOException {
+      TarArchiveEntry entry, File outputDir, Map<TarArchiveEntry, File> entryMap) throws IOException {
     String targetDirPath = outputDir.getCanonicalPath() + File.separator;
     File outputFile = new File(outputDir, entry.getName());
     if (!outputFile.getCanonicalPath().startsWith(targetDirPath)) {
@@ -997,8 +1011,7 @@ public class FileUtil {
         throw new IOException(
             "expanding " + entry.getName() + " would create entry outside of " + outputDir);
       }
-      linkEntries.add(entry);
-      outputDirs.add(outputDir);
+      entryMap.put(entry, outputDir);
       return;
     }
 
@@ -1010,7 +1023,7 @@ public class FileUtil {
       }
 
       for (TarArchiveEntry e : entry.getDirectoryEntries()) {
-        unpackEntries(tis, e, subDir, linkEntries, outputDirs);
+        unpackEntries(tis, e, subDir, entryMap);
       }
 
       return;
@@ -1038,33 +1051,31 @@ public class FileUtil {
   }
 
 
-  static void copyLinkEntries(List<TarArchiveEntry> linkEntries, List<File> outputDirs) throws IOException{
-    List<TarArchiveEntry> direntry = new ArrayList<>();
-    List<File> diroutdir = new ArrayList<>();
-    for (int i = 0; i < linkEntries.size(); i++) {
-        TarArchiveEntry entry = linkEntries.get(i);
-        File outputDir = outputDirs.get(i);
-        File outputFile = new File(outputDir, entry.getName());
-        String sourcePath = getCanonicalLinkPath(entry, outputFile, outputDir);
-        File src = new File(sourcePath);
-        if (src.isDirectory()) {
-          direntry.add(entry);
-          diroutdir.add(outputDirs.get(i));
-        } else {
-          FileUtils.copyFile(src, outputFile);
-        }
+  static void copyLinkEntries(Map<TarArchiveEntry, File> entryMap) throws IOException{
+    Map<TarArchiveEntry, File> dirEntries = new HashMap<>();
+    for (Map.Entry<TarArchiveEntry, File> mapEntry : entryMap.entrySet()) {
+      TarArchiveEntry entry = mapEntry.getKey();
+      File outputDir = mapEntry.getValue();
+      File outputFile = new File(outputDir, entry.getName());
+      String sourcePath = getCanonicalLinkPath(entry, outputFile, outputDir);
+      File src = new File(sourcePath);
+      if (src.isDirectory()) {
+        dirEntries.put(entry, outputDir);
+      } else {
+        FileUtils.copyFile(src, outputFile);
+      }
     }
-    for (int i = 0;i < direntry.size(); i ++) {
-        TarArchiveEntry entry = direntry.get(i);
-        File outputDir = diroutdir.get(i);
-        File outputFile = new File(outputDir, entry.getName());
-        String sourcePath = getCanonicalLinkPath(entry, outputFile, outputDir);
-        File src = new File(sourcePath);
-        if (src.isDirectory()) {
-          FileUtils.copyDirectory(src, outputFile);
-        } else {
-          throw new IOException("Unexpected file type");
-        }
+    for (Map.Entry<TarArchiveEntry, File> mapEntry: dirEntries.entrySet()) {
+      TarArchiveEntry entry = mapEntry.getKey();
+      File outputDir = mapEntry.getValue();
+      File outputFile = new File(outputDir, entry.getName());
+      String sourcePath = getCanonicalLinkPath(entry, outputFile, outputDir);
+      File src = new File(sourcePath);
+      if (src.isDirectory()) {
+        FileUtils.copyDirectory(src, outputFile);
+      } else {
+        throw new IOException("copyLinkEntries: Unexpected file type");
+      }
     }
   }
 
